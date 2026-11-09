@@ -29,7 +29,7 @@ Deux méthodes : **Docker** ou **conteneur LXC** (Proxmox ou toute machine Debia
 ### Docker
 
 ```bash
-git clone https://github.com/<vous>/sillage.git && cd sillage
+git clone https://github.com/jean-pgt/sillage.git && cd sillage
 cp .env.example .env
 # Renseignez APP_ORIGIN (adresse exacte de l'appli) et BOOTSTRAP_TOKEN (openssl rand -hex 24)
 docker compose up -d --build
@@ -43,7 +43,7 @@ Créez un conteneur Debian 12 ou 13 (1 cœur, 1 Go de mémoire, 4 Go de disque s
 
 ```bash
 apt-get update && apt-get install -y git
-git clone https://github.com/<vous>/sillage.git /root/sillage && cd /root/sillage
+git clone https://github.com/jean-pgt/sillage.git /root/sillage && cd /root/sillage
 bash install/lxc.sh
 ```
 
