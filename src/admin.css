@@ -1,0 +1,10 @@
+.admin-form .admin-checkbox{display:flex;flex-direction:row;align-items:center;gap:10px;font-size:13px;line-height:1.7;margin:14px 0;font-weight:400}
+.admin-form .admin-checkbox input{width:17px;height:17px;min-height:17px;margin:0;padding:0;flex-shrink:0;accent-color:#fff}
+.admin-checkbox small{margin-left:auto}
+.admin-advanced{margin:22px 0;border-top:1px solid var(--line);padding-top:17px}
+.admin-advanced>summary{font-size:14px;color:var(--muted);cursor:pointer;min-height:35px}
+.account-groups{border:0;border-top:1px solid var(--line);padding:20px 0 0;margin:24px 0}
+.account-groups legend{font-size:14px;padding-right:12px}
+.share-actions .share-connect{min-height:42px;font-size:13px;padding:8px}
+.app-bar .nav{padding-left:14px;padding-right:14px}
+@media(max-width:760px){.app-bar .nav{flex-direction:column;gap:5px;font-size:12px;padding:8px 3px}.share-actions{flex:0 0 100%;width:100%;margin:8px 0 0;gap:12px}.share-actions .button{flex:1}.share-actions .share-connect{min-height:44px;font-size:12px}.admin-form input,.admin-form select{font-size:16px}.identity-view .table-panel{margin-top:18px}}

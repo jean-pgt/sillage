@@ -1,0 +1,17 @@
+services:
+  sillage:
+    build: .
+    image: sillage:latest
+    container_name: sillage
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATA_DIR: /data
+      SSH_KEY_PATH: /data/id_ed25519
+    ports:
+      - "3000:3000"
+    volumes:
+      - sillage-data:/data
+
+volumes:
+  sillage-data:
