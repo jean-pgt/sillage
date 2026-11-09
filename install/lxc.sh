@@ -1,19 +1,19 @@
 #!/bin/bash
-# Installe Sillage dans un conteneur LXC Debian 12 ou 13 (ou toute machine Debian), avec systemd.
-# À lancer en root DANS le conteneur, depuis le dossier du dépôt :  bash install/lxc.sh
-# Mise à jour : git pull, puis relancer le même script (les données et le fichier .env sont conservés).
+# Installs Sillage in a Debian 12/13 LXC container (or any Debian machine) with systemd.
+# Run as root INSIDE the container, from the repository folder:  bash install/lxc.sh
+# Update: git pull, then run the same script again (data and .env are kept).
 set -euo pipefail
 NODE_VERSION="${NODE_VERSION:-24.22.1}"
 APP_DIR=/opt/sillage
 DATA_DIR=/var/lib/sillage
 SOURCE="$(cd "$(dirname "$0")/.." && pwd)"
 
-[ "$(id -u)" = 0 ] || { echo "Lancer en root."; exit 1; }
+[ "$(id -u)" = 0 ] || { echo "Run as root."; exit 1; }
 apt-get update -qq
 apt-get install -y -qq ca-certificates curl xz-utils rsync openssl >/dev/null
 
-# Node.js officiel, empreinte vérifiée
-arch=$(dpkg --print-architecture); case "$arch" in amd64) arch=x64 ;; arm64) arch=arm64 ;; *) echo "Architecture non prise en charge : $arch"; exit 1 ;; esac
+# Official Node.js build, checksum verified
+arch=$(dpkg --print-architecture); case "$arch" in amd64) arch=x64 ;; arm64) arch=arm64 ;; *) echo "Unsupported architecture: $arch"; exit 1 ;; esac
 if [ ! -x "/opt/node/bin/node" ] || [ "$(/opt/node/bin/node -v)" != "v$NODE_VERSION" ]; then
   tmp=$(mktemp -d); cd "$tmp"
   file="node-v$NODE_VERSION-linux-$arch.tar.xz"
@@ -75,8 +75,8 @@ systemctl restart sillage
 sleep 2; systemctl --no-pager --lines=3 status sillage || true
 origin=$(grep '^APP_ORIGIN=' .env | cut -d= -f2-)
 echo
-echo "Sillage tourne : $origin"
+echo "Sillage is running: $origin"
 if [ "${created:-0}" = 1 ]; then
-  echo "Code d'installation (premier compte) : $(grep '^BOOTSTRAP_TOKEN=' .env | cut -d= -f2-)"
-  echo "Réglages (adresse publique, OIDC) : $APP_DIR/.env, puis : systemctl restart sillage"
+  echo "Setup code (first account): $(grep '^BOOTSTRAP_TOKEN=' .env | cut -d= -f2-)"
+  echo "Settings (public URL, OIDC): $APP_DIR/.env, then: systemctl restart sillage"
 fi

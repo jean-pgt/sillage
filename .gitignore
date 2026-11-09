@@ -3,6 +3,7 @@ dist/
 .output/
 .tanstack/
 data/
+demo-data/
 .env
 .env.*
 !.env.example

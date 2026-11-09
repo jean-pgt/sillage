@@ -4,6 +4,7 @@ import { StorageView } from './Volumes'
 import { SharesView } from './Shares'
 import { ShareConnection } from './ShareConnection'
 import { MountScripts } from './MountScripts'
+import { SillageMark } from './Logo'
 import { clientHost, CLIENT_HOST } from './client-host'
 import { ShareEditor, AccountEditor, GroupEditor, AccountsView } from './Administration'
 import { api } from './client-api'
@@ -114,7 +115,7 @@ export function App() {
   </div>
 }
 
-function Brand(){return <div className="brand"><span className="brand-mark"><Layers3 size={24} strokeWidth={1.7}/></span><span>sillage<span className="brand-period">.</span></span></div>}
+function Brand(){return <div className="brand"><span className="brand-mark"><SillageMark size={22}/></span><span>sillage<span className="brand-period">.</span></span></div>}
 function Empty({icon,title,text,action}:{icon:ReactNode;title:string;text:string;action?:ReactNode}){return <div className="empty"><span className="empty-icon">{icon}</span><h3>{title}</h3><p>{text}</p>{action}</div>}
 function HostCard({server,onOpen,onStorage,onRemove,onClientHost}:{server:Host;onOpen:()=>void;onStorage:()=>void;onRemove?:()=>void;onClientHost:(value:string)=>void}){
   const connected=Boolean(server.snapshot&&!server.error);const storage=server.snapshot?.storage;const mounts=dataMounts(storage)

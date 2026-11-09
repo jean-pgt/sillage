@@ -1,45 +1,84 @@
-# Sillage
+<p align="center">
+  <img src="docs/images/banner.png" alt="Sillage — manage your Samba servers from one calm, self-hosted web interface" width="100%">
+</p>
 
-**Interface web auto-hébergée pour administrer plusieurs serveurs Samba**, en français, pensée pour un homelab ou une petite structure.
+<p align="center">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-white?style=flat-square"></a>
+  <img alt="Node.js 24" src="https://img.shields.io/badge/node-24-white?style=flat-square&logo=nodedotjs&logoColor=white">
+  <img alt="Docker" src="https://img.shields.io/badge/docker-ready-white?style=flat-square&logo=docker&logoColor=white">
+  <img alt="Proxmox LXC" src="https://img.shields.io/badge/proxmox-LXC-white?style=flat-square&logo=proxmox&logoColor=white">
+</p>
 
-*Self-hosted web UI to manage one or more Samba file servers over SSH (shares, accounts, groups, storage view, client mount scripts). The interface is in French.*
+**Sillage** (French for *wake*, the trail a boat leaves on the water) is a self-hosted web interface to manage one or more **Samba file servers** over SSH: shares, accounts, groups and storage, plus ready-to-run scripts that mount your shares on Windows, macOS and Linux.
 
-## Ce que fait Sillage
+It is built for homelabs and small teams who want a clean, safe alternative to editing `smb.conf` by hand. Nothing extra runs on your file server: Sillage talks to it through a dedicated SSH account that can only run one small, audited helper.
 
-- **Partages** : liste de tous les partages de tous vos serveurs, avec recherche. Création, modification (lecture/écriture, comptes et groupes autorisés, visibilité, description) et retrait sans toucher aux fichiers.
-- **Se connecter** : chemin Windows (`\\serveur\partage`), adresse macOS/Linux (`smb://…`) et commande `mount -t cifs`, prêts à copier.
-- **Scripts de montage** : cochez des partages, choisissez une lettre de lecteur, téléchargez un script **Windows (PowerShell)**, **macOS** ou **Linux**.
-  - Aucun mot de passe dans le script : il est demandé une fois sur le poste (Gestionnaire d'identification Windows, trousseau macOS, fichier root 600 sous Linux).
-  - Les partages ne sont montés que si le serveur répond. Hors réseau local ou VPN, ils sont retirés : l'explorateur de fichiers ne se fige plus.
-- **Adresse pour les postes** : par serveur, l'IP ou le nom DNS local que les ordinateurs utilisent (peut différer de l'adresse SSH).
-- **Comptes et groupes** : comptes Samba, mots de passe Samba, membres des groupes.
-- **Stockage** : disques, RAID Linux, pools et datasets ZFS, montages, en consultation seule.
-- **Sécurité** : connexion OpenID Connect (Authentik, Keycloak, Authelia, Zitadel…) avec PKCE, state, nonce et groupe obligatoire ; empreintes SSH épinglées ; historique des actions ; chaque modification Samba est sauvegardée, validée par `testparm` et annulée automatiquement en cas d'erreur.
+> The interface is currently in **French**. An English translation is welcome — see [Contributing](#contributing).
 
-## Fonctionnement
+<p align="center">
+  <img src="docs/images/shares.png" alt="All shares from all servers in one list" width="100%">
+</p>
 
-Sillage se connecte en SSH à chaque serveur Samba avec un **compte dédié** (`samba-manager`) et une clé Ed25519. Ce compte ne peut lancer qu'**un seul programme** (`/usr/local/sbin/samba-manager-helper`, commande forcée et `sudo` limité), qui accepte un petit document JSON validé : inventaire et gestion des partages. Aucun service supplémentaire n'est installé sur le serveur Samba.
+## Features
 
-Les partages créés par Sillage sont écrits dans `/etc/samba/samba-manager.conf`, inclus à la fin de `smb.conf`. Les partages existants de `smb.conf` restent modifiables section par section, sans réécrire le reste.
+- **Every share, every server, one list.** Search, filter by server, see at a glance what is read-only.
+- **Create and edit shares** — path, read/write, allowed users and groups, group for new files, visibility, description. Removing a share never deletes its files.
+- **Accounts and groups** — create Samba accounts, set passwords, manage group members.
+- **Storage overview** — disks, Linux RAID, ZFS pools and datasets, mount points. Read-only: Sillage never mounts, formats or changes a disk.
+- **Connect from any computer** — copy-ready `\\server\share` paths, `smb://` addresses and `mount -t cifs` commands.
+- **Mount scripts for Windows, macOS and Linux** — tick the shares you want, pick drive letters, download one script:
+  - no password inside the script: it is asked once and stored by the OS (Windows Credential Manager, macOS Keychain, a root-only file on Linux);
+  - shares are only mounted when the server answers, so **File Explorer / Finder no longer freezes away from home**; they come back by themselves on the home network or VPN.
+- **Client address per server** — the IP or local DNS name your computers use, which can differ from the SSH address.
+- **Single sign-on** with any OpenID Connect provider (Authentik, Keycloak, Authelia, Zitadel…): PKCE, state, nonce, mandatory group.
+- **Safe by design** — pinned SSH host keys, every Samba change is backed up, validated with `testparm` and rolled back automatically if Samba refuses it; full action history.
+- **Works on a phone** — dark glass interface, responsive down to 390 px.
+
+## Screenshots
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/mount-scripts.png" alt="Mount script generator"><br><sub><b>Mount scripts</b> — pick shares and drive letters, download a script for Windows, macOS or Linux.</sub></td>
+    <td width="50%"><img src="docs/images/storage.png" alt="Storage overview"><br><sub><b>Storage</b> — RAID arrays and ZFS pools with real capacities; datasets sharing a pool are never added up twice.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/connect.png" alt="Connection paths"><br><sub><b>Connect</b> — the right address for Windows, macOS or Linux, one click to copy.</sub></td>
+    <td width="50%"><img src="docs/images/servers.png" alt="Servers"><br><sub><b>Servers</b> — status, disks, and the address your computers should use.</sub></td>
+  </tr>
+</table>
+
+<p align="center"><img src="docs/images/mobile.png" alt="Sillage on a phone" width="300"></p>
+
+## How it works
+
+```
+ Browser ──HTTPS──▶ Sillage (Node.js) ──SSH, pinned key──▶ samba-manager ──sudo, one command──▶ samba-manager-helper
+                    SQLite: servers,                         (forced command,                   (validated JSON in,
+                    sessions, history                         no shell)                          testparm + rollback)
+```
+
+When you add a server, Sillage shows a short setup script to run once with `sudo bash` on that server. It creates the `samba-manager` account, installs the helper (`/usr/local/sbin/samba-manager-helper`, owned by root) and prints the SSH host fingerprint to paste into Sillage. The SSH key can only run that helper, and `sudo` is limited to it.
+
+Shares created by Sillage live in `/etc/samba/samba-manager.conf`, included at the end of `smb.conf`. Existing shares in `smb.conf` stay editable section by section; the rest of the file is never rewritten.
 
 ## Installation
 
-Deux méthodes : **Docker** ou **conteneur LXC** (Proxmox ou toute machine Debian). Node.js 24 est requis (fourni dans les deux cas).
+Two ways: **Docker** or a **Proxmox LXC / Debian** machine. Both bring Node.js 24 with them.
 
 ### Docker
 
 ```bash
 git clone https://github.com/jean-pgt/sillage.git && cd sillage
 cp .env.example .env
-# Renseignez APP_ORIGIN (adresse exacte de l'appli) et BOOTSTRAP_TOKEN (openssl rand -hex 24)
+# set APP_ORIGIN (the exact URL of the app) and BOOTSTRAP_TOKEN (openssl rand -hex 24)
 docker compose up -d --build
 ```
 
-L'application écoute sur le port 3000. Les données (base SQLite et clé SSH) sont dans le volume `sillage-data`.
+Sillage listens on port `3000`. Data (SQLite database and SSH key) is stored in the `sillage-data` volume.
 
-### LXC (Proxmox) ou Debian
+### Proxmox LXC or Debian
 
-Créez un conteneur Debian 12 ou 13 (1 cœur, 1 Go de mémoire, 4 Go de disque suffisent ; sous Proxmox, cochez l'option **nesting** pour Debian 13), puis dans le conteneur :
+Create a Debian 12 or 13 container (1 core, 1 GB RAM and 4 GB disk are enough; on Proxmox, enable **nesting** for Debian 13), then inside the container:
 
 ```bash
 apt-get update && apt-get install -y git
@@ -47,31 +86,33 @@ git clone https://github.com/jean-pgt/sillage.git /root/sillage && cd /root/sill
 bash install/lxc.sh
 ```
 
-Le script installe Node.js (archive officielle, empreinte vérifiée), compile, lance les tests, crée le service `sillage` (systemd, compte sans connexion, démarrage automatique) et affiche l'adresse et le code d'installation. Code dans `/opt/sillage`, données dans `/var/lib/sillage`, réglages dans `/opt/sillage/.env`.
+The script installs Node.js from the official archive (checksum verified), builds the app, runs the tests, creates a `sillage` systemd service (unprivileged user, hardened unit, starts on boot) and prints the URL and the setup code.
+Code lives in `/opt/sillage`, data in `/var/lib/sillage`, settings in `/opt/sillage/.env`.
 
-Mise à jour : `git pull && bash install/lxc.sh`.
+Update: `git pull && bash install/lxc.sh` — data and settings are kept.
 
-> Donnez au conteneur une **adresse IP fixe** (ou une réservation DHCP) : c'est elle que vous déclarez dans votre reverse proxy et chez votre fournisseur OIDC.
+> Give the container a **fixed IP address** (or a DHCP reservation): it is what your reverse proxy and your OIDC provider will point to.
 
-## Premier lancement
+## First steps
 
-1. Ouvrez l'application et créez le compte local avec le **code d'installation** (`BOOTSTRAP_TOKEN`).
-2. **Ajouter un serveur** : l'assistant affiche un script à lancer avec `sudo bash` sur le serveur Samba. Il crée le compte `samba-manager`, installe le programme d'aide et affiche l'empreinte SSH du serveur, à recopier dans Sillage.
-3. Cliquez sur **Actualiser** : partages, comptes et stockage apparaissent.
+1. Open Sillage and create the local account with the **setup code** (`BOOTSTRAP_TOKEN`).
+2. **Add a server** (*Serveurs → Ajouter un serveur*): run the displayed script with `sudo bash` on your Samba server, then paste the SSH fingerprint it prints.
+3. Click **Actualiser** (refresh): shares, accounts and storage appear.
+4. Optional: in *Serveurs*, set the **address for computers** (*Adresse pour les postes*), e.g. `nas.home.lan`.
 
-## Connexion OpenID Connect (recommandée)
+## Single sign-on (recommended)
 
-Créez chez votre fournisseur une application OAuth2/OpenID Connect (client confidentiel) avec l'URL de retour :
+Create an OAuth2 / OpenID Connect application (confidential client) in your identity provider, with this redirect URI:
 
 ```text
 https://sillage.example.com/api/auth/callback
 ```
 
-Puis dans `.env` :
+Then in `.env`:
 
 ```dotenv
 APP_ORIGIN=https://sillage.example.com
-OIDC_PROVIDER_NAME=Mon SSO
+OIDC_PROVIDER_NAME=My SSO
 OIDC_ISSUER=https://auth.example.com/application/o/sillage/
 OIDC_CLIENT_ID=…
 OIDC_CLIENT_SECRET=…
@@ -79,39 +120,62 @@ OIDC_ADMIN_GROUP=sillage-admins
 LOCAL_LOGIN_ENABLED=false
 ```
 
-- `OIDC_ADMIN_GROUP` impose l'appartenance exacte à ce groupe dans le jeton signé (claim `groups`). Sans lui, `OIDC_ADMIN_SUBJECTS` donne une liste explicite d'identifiants `sub`.
-- `LOCAL_LOGIN_ENABLED=false` désactive le compte local et refuse les anciennes sessions locales, une fois la connexion OIDC vérifiée. En secours, remettez `true` et redémarrez.
-- Utilisez HTTPS (reverse proxy) en production : le cookie de session est alors `__Host-`, `Secure`, `HttpOnly`.
+- `OIDC_ADMIN_GROUP` requires that exact group in the signed ID token (`groups` claim). Without it, `OIDC_ADMIN_SUBJECTS` is an explicit list of allowed `sub` values.
+- `LOCAL_LOGIN_ENABLED=false` disables the local account and rejects old local sessions once SSO works. To recover, set it back to `true` and restart.
+- Serve Sillage over HTTPS (reverse proxy) in production: the session cookie then becomes `__Host-`, `Secure`, `HttpOnly`.
 
-## Réglages (`.env`)
+## Configuration
 
-| Variable | Rôle |
+| Variable | Purpose |
 |---|---|
-| `APP_ORIGIN` | Adresse exacte de l'application (cookies, vérification d'origine, retour OIDC) |
-| `HOST`, `PORT` | Écoute (par défaut `0.0.0.0:3000`) |
-| `DATA_DIR`, `SSH_KEY_PATH` | Base SQLite et clé SSH de l'application |
-| `BOOTSTRAP_TOKEN` | Code d'installation du premier compte local |
+| `APP_ORIGIN` | Exact public URL of the app (cookies, origin check, OIDC redirect) |
+| `HOST`, `PORT` | Listen address (default `0.0.0.0:3000`) |
+| `DATA_DIR`, `SSH_KEY_PATH` | SQLite database and the app's SSH key |
+| `BOOTSTRAP_TOKEN` | Setup code for the first local account |
 | `LOCAL_LOGIN_ENABLED` | `true` / `false` |
-| `OIDC_PROVIDER_NAME` | Nom affiché sur le bouton de connexion |
-| `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` | Fournisseur OpenID Connect |
-| `OIDC_ADMIN_GROUP`, `OIDC_ADMIN_SUBJECTS` | Qui peut administrer |
+| `OIDC_PROVIDER_NAME` | Name shown on the sign-in button |
+| `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` | OpenID Connect provider |
+| `OIDC_ADMIN_GROUP`, `OIDC_ADMIN_SUBJECTS` | Who may administer |
 
-## Limites
+## Mount scripts in detail
 
-Pas d'édition de la section `[global]`, des identités LDAP/AD, ni des ACL récursives ; pas de suppression des comptes Linux. La vue Stockage ne monte, ne formate et ne modifie aucun disque. Les sauvegardes faites par Sillage concernent la configuration Samba, pas les fichiers des partages.
+| | Windows | macOS | Linux |
+|---|---|---|---|
+| File | `sillage-partages.ps1` | `sillage-partages-mac.sh` | `sillage-partages-linux.sh` |
+| Run | right-click → *Run with PowerShell* | `bash sillage-partages-mac.sh` | `sudo bash sillage-partages-linux.sh` |
+| Password | Credential Manager (`cmdkey`) | Keychain | `/etc/sillage/*.cred` (root, 600) |
+| When | at logon, on network change, every 5 min | at login, on network change, every 5 min | on access (systemd automount, 5 s timeout) |
+| Remove | `-Desinstaller` | `--desinstaller` | `--desinstaller` |
 
-## Développement
+Each script checks that the server answers on port 445 before mounting, and unmounts otherwise — no more frozen file explorer when you are away from home.
+
+## Limitations
+
+No editing of the `[global]` section, LDAP/AD identities or recursive ACLs; Linux accounts are never deleted. Backups made by Sillage cover the Samba configuration, not the files inside shares.
+
+## Development
 
 ```bash
 npm ci
-npm test          # tests Node (sécurité, OIDC, chemins, scripts de montage)
+npm test            # Node tests: security, OIDC policy, paths, mount scripts
 npm run typecheck
 npm run build
 cp .env.example .env && npm start
 ```
 
-Les tests du programme d'aide côté serveur : `python3 -m unittest discover remote`.
+Server-side helper tests: `python3 -m unittest discover remote`.
 
-## Licence
+Demo data (fictional servers, used for the screenshots):
 
-MIT
+```bash
+DATA_DIR=./demo-data node scripts/demo-data.mjs
+DATA_DIR=./demo-data BOOTSTRAP_TOKEN=demo npm start
+```
+
+## Contributing
+
+Issues and pull requests are welcome — especially an **English translation** of the interface, and testing the mount scripts on more systems. Please keep the security model intact: no password ever stored in a script, no shell access for the SSH account.
+
+## License
+
+[MIT](LICENSE)
