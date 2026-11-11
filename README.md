@@ -141,11 +141,11 @@ LOCAL_LOGIN_ENABLED=false
 
 | | Windows | macOS | Linux |
 |---|---|---|---|
-| File | `sillage-partages.ps1` | `sillage-partages-mac.sh` | `sillage-partages-linux.sh` |
-| Run | right-click → *Run with PowerShell* | `bash sillage-partages-mac.sh` | `sudo bash sillage-partages-linux.sh` |
+| File | `sillage-partages.cmd` (PowerShell inside) | `sillage-partages-mac.sh` | `sillage-partages-linux.sh` |
+| Run | double-click (no execution-policy change needed) | `bash sillage-partages-mac.sh` | `sudo bash sillage-partages-linux.sh` |
 | Password | Credential Manager (`cmdkey`) | Keychain | `/etc/sillage/*.cred` (root, 600) |
 | When | at logon, on network change, every 5 min | at login, on network change, every 5 min | on access (systemd automount, 5 s timeout) |
-| Remove | `-Desinstaller` | `--desinstaller` | `--desinstaller` |
+| Remove | `sillage-partages.cmd -Desinstaller` | `--desinstaller` | `--desinstaller` |
 
 Each script checks that the server answers on port 445 before mounting, and unmounts otherwise — no more frozen file explorer when you are away from home.
 

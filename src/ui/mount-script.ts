@@ -42,7 +42,7 @@ export function mountScript(system: MountSystem, rawItems: MountItem[], username
   const items = normalizeItems(system, rawItems, username.trim())
   const user = username.trim()
   const stamp = generatedAt.toLocaleString('fr-FR', { dateStyle: 'long', timeStyle: 'short' })
-  if (system === 'windows') return { filename: 'sillage-partages.ps1', content: windows(items, user, stamp) }
+  if (system === 'windows') return { filename: 'sillage-partages.cmd', content: windows(items, user, stamp) }
   if (system === 'mac') return { filename: 'sillage-partages-mac.sh', content: mac(items, user, stamp) }
   return { filename: 'sillage-partages-linux.sh', content: linux(items, user, stamp) }
 }
@@ -51,12 +51,22 @@ type Item = ReturnType<typeof normalizeItems>[number]
 
 function windows(items: Item[], user: string, stamp: string) {
   const list = items.map(i => `  @{ Lettre = ${psQuote(i.letter + ':')}; Serveur = ${psQuote(i.host)}; Partage = ${psQuote(i.share)} }`).join("\n")
-  const body = `# Sillage : montage des partages réseau (Windows)
+  const body = `<# : lanceur Windows de Sillage, la partie PowerShell suit
+@echo off
+setlocal
+set "SILLAGE_SOURCE=%~f0"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$d = Join-Path $env:LOCALAPPDATA 'Sillage'; New-Item -ItemType Directory -Force -Path $d | Out-Null; $f = Join-Path $d 'partages.ps1'; [IO.File]::WriteAllText($f, [IO.File]::ReadAllText($env:SILLAGE_SOURCE, [Text.Encoding]::UTF8), (New-Object Text.UTF8Encoding $true)); & $f %*"
+echo.
+pause
+exit /b
+#>
+# Sillage : montage des partages réseau (Windows)
 # Généré le ${stamp}. Ce fichier ne contient aucun mot de passe.
 #
-# Installer : clic droit sur ce fichier > « Exécuter avec PowerShell »
-#   ou : powershell -ExecutionPolicy Bypass -File .\\sillage-partages.ps1
-# Retirer   : powershell -ExecutionPolicy Bypass -File .\\sillage-partages.ps1 -Desinstaller
+# Installer : double-clic sur sillage-partages.cmd (si Windows avertit : « Informations complémentaires » > « Exécuter quand même »)
+# Retirer   : dans une invite de commandes, sillage-partages.cmd -Desinstaller
+# Le lanceur ci-dessus recopie la partie PowerShell dans %LOCALAPPDATA%\\Sillage\\partages.ps1 et l'exécute :
+# aucune stratégie d'exécution à changer, et la fenêtre reste ouverte pour lire le résultat.
 #
 # Le compte demandé est le compte SAMBA du serveur (son mot de passe Samba), gardé ensuite par Windows.
 # Les lecteurs ne sont montés que si le serveur répond (réseau local ou VPN) : à l'ouverture de session,
@@ -74,6 +84,7 @@ $Lanceur = Join-Path $Dossier 'partages.vbs'
 $Journal = Join-Path $Dossier 'journal.txt'
 $Tache = 'Sillage - partages reseau'
 $Serveurs = @($Partages | ForEach-Object { $_.Serveur } | Select-Object -Unique)
+trap { Noter "Erreur inattendue : $($_.Exception.Message)" 'Red'; exit 1 }
 
 function Noter([string]$Texte, [string]$Couleur = '') {
   try {
@@ -147,7 +158,6 @@ if ($Desinstaller) {
   foreach ($s in $Serveurs) { cmdkey /delete:$s | Out-Null }
   Remove-Item -LiteralPath $Dossier -Recurse -Force -ErrorAction SilentlyContinue
   Write-Host 'Partages Sillage retirés (lecteurs, tâche planifiée, identifiants enregistrés).'
-  Read-Host 'Appuyez sur Entrée pour fermer' | Out-Null
   exit 0
 }
 
@@ -157,7 +167,7 @@ New-Item -ItemType Directory -Force -Path $Dossier | Out-Null
 foreach ($serveur in $Serveurs) {
   if (-not (Test-Serveur $serveur)) {
     Noter "$serveur ne répond pas sur le port 445. Branchez-vous au réseau local ou au VPN, puis relancez." 'Red'
-    Read-Host 'Appuyez sur Entrée pour fermer' | Out-Null; exit 1
+    exit 1
   }
   Nettoyer $serveur
   $premier = ($Partages | Where-Object { $_.Serveur -eq $serveur } | Select-Object -First 1)
@@ -165,7 +175,7 @@ foreach ($serveur in $Serveurs) {
   for ($essai = 1; $essai -le 3; $essai++) {
     $message = "Compte SAMBA pour $serveur (essai $essai/3)"
     $id = if ($Compte) { Get-Credential -UserName $Compte -Message $message } else { Get-Credential -Message $message }
-    if (-not $id) { Write-Host 'Installation annulée.'; Read-Host 'Appuyez sur Entrée pour fermer' | Out-Null; exit 1 }
+    if (-not $id) { Write-Host 'Installation annulée.'; exit 1 }
     $u = $id.UserName -replace '^\\\\', ''
     $mdp = $id.GetNetworkCredential().Password
     # Vérification du compte avant de l'enregistrer
@@ -178,10 +188,10 @@ foreach ($serveur in $Serveurs) {
       break
     }
     Noter "Connexion refusée par $serveur : $(Explication $r.Message)" 'Red'
-    if ($essai -eq 3) { Read-Host 'Appuyez sur Entrée pour fermer' | Out-Null; exit 1 }
+    if ($essai -eq 3) { exit 1 }
   }
 }
-Copy-Item -LiteralPath $PSCommandPath -Destination $Cible -Force
+if ($PSCommandPath -ne $Cible) { Copy-Item -LiteralPath $PSCommandPath -Destination $Cible -Force }
 # Lanceur invisible (pas de fenêtre qui clignote toutes les 5 minutes)
 Set-Content -LiteralPath $Lanceur -Encoding Unicode -Value ('CreateObject("WScript.Shell").Run "powershell.exe -NoProfile -ExecutionPolicy Bypass -File """ & "' + $Cible + '" & """ -Monter", 0, False')
 $utilisateur = [Security.SecurityElement]::Escape([Security.Principal.WindowsIdentity]::GetCurrent().Name)
@@ -216,9 +226,9 @@ Write-Host ''
 Write-Host "$n lecteur(s) sur $($Partages.Count) montés." -ForegroundColor Cyan
 Get-SmbMapping -ErrorAction SilentlyContinue | Where-Object { $Partages.Lettre -contains $_.LocalPath } | Format-Table LocalPath, RemotePath, Status -AutoSize
 Write-Host "Journal : $Journal"
-Read-Host 'Appuyez sur Entrée pour fermer' | Out-Null
 `
-  // PowerShell 5.1 lit les .ps1 sans BOM comme ANSI : fins de ligne Windows ici, BOM ajouté au téléchargement.
+  // Fichier .cmd : fins de ligne Windows obligatoires et pas de BOM (il casserait la 1re ligne lue par cmd.exe).
+  // Le lanceur relit la partie PowerShell en UTF-8 et la réécrit avec BOM, comme l'attend PowerShell 5.1.
   return body.replaceAll("\n", "\r\n")
 }
 

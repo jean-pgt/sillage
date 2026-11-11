@@ -29,8 +29,7 @@ export function MountScripts({servers}:{servers:Host[]}) {
     try {
       const items = shares.filter(item=>item.key in chosen).map(item=>({host:clientHost(item.server),share:item.share.name,letter:chosen[item.key],folder:'/mnt/'+slug(item.share.name)}))
       const script = mountScript(system,items,username)
-      // PowerShell 5.1 a besoin du BOM UTF-8 pour lire correctement les accents.
-      const blob = new Blob([system==='windows'?'﻿':'',script.content],{type:'text/plain;charset=utf-8'})
+      const blob = new Blob([script.content],{type:'text/plain;charset=utf-8'})
       const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = script.filename
       document.body.append(link); link.click(); link.remove(); setTimeout(()=>URL.revokeObjectURL(link.href),1000)
       setError(''); setDone(script.filename)
@@ -55,7 +54,7 @@ export function MountScripts({servers}:{servers:Host[]}) {
     <button className="button primary full" disabled={!count} onClick={download}>{done?<Check size={16}/>:<ArrowDownToLine size={16}/>}{done?'Script téléchargé':count?`Télécharger le script (${count} partage${count>1?'s':''})`:'Cochez au moins un partage'}</button>
     {error&&<p className="alert error" role="alert">{error}</p>}
     <details className="connection-advanced" open={Boolean(done)}><summary>Lancer le script</summary>
-      {system==='windows'&&<p>Clic droit sur <code>sillage-partages.ps1</code> → « Exécuter avec PowerShell ». Le mot de passe est demandé une fois puis gardé par Windows. Pour tout retirer : <code>powershell -ExecutionPolicy Bypass -File .\sillage-partages.ps1 -Desinstaller</code>.</p>}
+      {system==='windows'&&<p>Double-cliquez sur <code>sillage-partages.cmd</code>. Si Windows affiche un avertissement : « Informations complémentaires » → « Exécuter quand même ». Le mot de passe Samba est demandé une fois puis gardé par Windows ; la fenêtre reste ouverte avec le résultat. Pour tout retirer : <code>sillage-partages.cmd -Desinstaller</code> dans une invite de commandes.</p>}
       {system==='mac'&&<p>Dans Terminal : <code>bash ~/Downloads/sillage-partages-mac.sh</code>. Au premier montage, cochez « Mémoriser ce mot de passe dans mon trousseau ». Pour tout retirer : ajoutez <code>--desinstaller</code>.</p>}
       {system==='linux'&&<p>Dans un terminal : <code>sudo bash ~/Téléchargements/sillage-partages-linux.sh</code>. Le mot de passe est rangé dans <code>/etc/sillage</code>, lisible par root seulement. Pour tout retirer : ajoutez <code>--desinstaller</code>.</p>}
       <p>Le script ne contient aucun mot de passe. L’adresse utilisée pour chaque serveur se règle dans Serveurs → « Adresse pour les postes ».</p>

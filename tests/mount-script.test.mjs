@@ -7,7 +7,7 @@ const items = [{ host: 'nas.lan', share: 'Photos', letter: 'P' }, { host: 'nas.l
 
 test('Windows script mounts only when the server answers and never contains a password', () => {
   const { filename, content } = mountScript('windows', items, 'marie');
-  assert.equal(filename, 'sillage-partages.ps1');
+  assert.equal(filename, 'sillage-partages.cmd');
   assert.ok(content.includes("@{ Lettre = 'P:'; Serveur = 'nas.lan'; Partage = 'Photos' }"));
   assert.ok(content.includes("Partage = 'Films d''été'"), 'single quotes are doubled for PowerShell');
   assert.ok(content.includes('/persistent:no'));
@@ -15,6 +15,16 @@ test('Windows script mounts only when the server answers and never contains a pa
   assert.ok(content.includes('EventID=10000'));
   assert.ok(!/password\s*=/i.test(content));
   assert.ok(content.includes('\r\n'));
+});
+test('Windows file is a double-click .cmd launcher wrapping the PowerShell part', () => {
+  const { content } = mountScript('windows', items, 'marie');
+  assert.ok(content.startsWith('<# :'), 'no BOM, first line is a cmd label and a PowerShell comment');
+  const batch = content.slice(0, content.indexOf('\r\n#>\r\n'));
+  assert.ok(batch.length > 0, 'batch part closed by #> on its own line');
+  assert.ok(/^[\x20-\x7e\r\n]*$/.test(batch), 'batch part is plain ASCII');
+  assert.ok(batch.includes('-ExecutionPolicy Bypass') && batch.includes('%*') && batch.includes('\r\npause\r\nexit /b'));
+  assert.ok(!content.includes('Read-Host'), 'the window is kept open by pause, not by PowerShell');
+  assert.ok(content.includes('if ($PSCommandPath -ne $Cible)'));
 });
 test('macOS script uses the keychain, URL-encodes share names and installs a LaunchAgent', () => {
   const { content } = mountScript('mac', items, 'marie');
