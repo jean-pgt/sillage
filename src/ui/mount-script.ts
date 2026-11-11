@@ -58,9 +58,10 @@ function windows(items: Item[], user: string, stamp: string) {
 #   ou : powershell -ExecutionPolicy Bypass -File .\\sillage-partages.ps1
 # Retirer   : powershell -ExecutionPolicy Bypass -File .\\sillage-partages.ps1 -Desinstaller
 #
-# Le mot de passe est demandé une fois et rangé dans le Gestionnaire d'identification Windows.
+# Le compte demandé est le compte SAMBA du serveur (son mot de passe Samba), gardé ensuite par Windows.
 # Les lecteurs ne sont montés que si le serveur répond (réseau local ou VPN) : à l'ouverture de session,
 # à chaque changement de réseau et toutes les 5 minutes. Hors réseau, ils sont retirés : l'Explorateur ne se fige plus.
+# Journal : %LOCALAPPDATA%\\Sillage\\journal.txt
 param([switch]$Monter, [switch]$Desinstaller)
 
 $Partages = @(
@@ -70,56 +71,117 @@ $Compte = ${psQuote(user)}
 $Dossier = Join-Path $env:LOCALAPPDATA 'Sillage'
 $Cible = Join-Path $Dossier 'partages.ps1'
 $Lanceur = Join-Path $Dossier 'partages.vbs'
+$Journal = Join-Path $Dossier 'journal.txt'
 $Tache = 'Sillage - partages reseau'
+$Serveurs = @($Partages | ForEach-Object { $_.Serveur } | Select-Object -Unique)
+
+function Noter([string]$Texte, [string]$Couleur = '') {
+  try {
+    New-Item -ItemType Directory -Force -Path $Dossier | Out-Null
+    Add-Content -LiteralPath $Journal -Value ("{0:yyyy-MM-dd HH:mm:ss}  {1}" -f (Get-Date), $Texte) -Encoding UTF8
+  } catch {}
+  if (-not $Monter) { if ($Couleur) { Write-Host $Texte -ForegroundColor $Couleur } else { Write-Host $Texte } }
+}
 
 function Test-Serveur([string]$Nom) {
   $client = New-Object System.Net.Sockets.TcpClient
   try {
     $essai = $client.BeginConnect($Nom, 445, $null, $null)
-    return ($essai.AsyncWaitHandle.WaitOne(1500) -and $client.Connected)
+    return ($essai.AsyncWaitHandle.WaitOne(2000) -and $client.Connected)
   } catch { return $false } finally { $client.Close() }
 }
 
+# Lance « net use » et renvoie le code de sortie et le message (au lieu de les cacher).
+function NetUse([string[]]$Arguments) {
+  $sortie = & net.exe use @Arguments 2>&1 | Out-String
+  return @{ Code = $LASTEXITCODE; Message = ($sortie -replace '\\s+', ' ').Trim() }
+}
+
+function Explication([string]$Message) {
+  $code = if ($Message -match '(?:error|erreur)\\D{0,20}(\\d+)') { [int]$Matches[1] } else { 0 }
+  switch ($code) {
+    1219 { return 'Windows a déjà une connexion à ce serveur avec un autre compte (erreur 1219).' }
+    86 { return 'Compte ou mot de passe Samba refusé (erreur 86).' }
+    1326 { return 'Compte ou mot de passe Samba refusé (erreur 1326).' }
+    53 { return 'Serveur introuvable (erreur 53).' }
+    67 { return 'Partage introuvable sur le serveur (erreur 67).' }
+    85 { return 'Lettre de lecteur déjà utilisée (erreur 85).' }
+    5 { return 'Accès refusé à ce partage pour ce compte (erreur 5).' }
+  }
+  return $Message
+}
+
+# Retire toutes les connexions existantes vers un serveur (anciens lecteurs, accès par l'Explorateur).
+function Nettoyer([string]$Serveur) {
+  Get-SmbMapping -ErrorAction SilentlyContinue | Where-Object { $_.RemotePath -like "\\\\$Serveur\\*" } |
+    ForEach-Object { NetUse @($_.LocalPath, '/delete', '/y') | Out-Null }
+  Get-CimInstance Win32_NetworkConnection -ErrorAction SilentlyContinue | Where-Object { $_.RemoteName -like "\\\\$Serveur\\*" } |
+    ForEach-Object { NetUse @($_.RemoteName, '/delete', '/y') | Out-Null }
+  NetUse @("\\\\$Serveur\\IPC$", '/delete', '/y') | Out-Null
+}
+
 function Monter-Partages {
-  foreach ($serveur in ($Partages | ForEach-Object { $_.Serveur } | Select-Object -Unique)) {
+  $ok = 0
+  foreach ($serveur in $Serveurs) {
     $joignable = Test-Serveur $serveur
+    if (-not $joignable) { Noter "$serveur ne répond pas (hors réseau ?) : lecteurs retirés." 'Yellow' }
     foreach ($p in ($Partages | Where-Object { $_.Serveur -eq $serveur })) {
       $chemin = "\\\\$($p.Serveur)\\$($p.Partage)"
       $actuel = Get-SmbMapping -LocalPath $p.Lettre -ErrorAction SilentlyContinue
-      if ($joignable) {
-        if ($actuel -and ($actuel.RemotePath -ne $chemin -or $actuel.Status -ne 'OK')) {
-          net use $p.Lettre /delete /y 2>$null | Out-Null
-          $actuel = $null
-        }
-        if (-not $actuel) { net use $p.Lettre $chemin /persistent:no 2>$null | Out-Null }
-      } elseif ($actuel) {
-        net use $p.Lettre /delete /y 2>$null | Out-Null
-      }
+      if (-not $joignable) { if ($actuel) { NetUse @($p.Lettre, '/delete', '/y') | Out-Null }; continue }
+      if ($actuel -and $actuel.RemotePath -eq $chemin -and $actuel.Status -eq 'OK') { $ok++; continue }
+      if ($actuel) { NetUse @($p.Lettre, '/delete', '/y') | Out-Null }
+      $r = NetUse @($p.Lettre, $chemin, '/persistent:no')
+      if ($r.Code -eq 0) { $ok++; Noter "$($p.Lettre) monté : $chemin" 'Green' }
+      else { Noter "$($p.Lettre) ÉCHEC : $chemin — $(Explication $r.Message)" 'Red' }
     }
   }
+  return $ok
 }
 
-if ($Monter) { Monter-Partages; exit 0 }
+if ($Monter) { Monter-Partages | Out-Null; exit 0 }
 
 if ($Desinstaller) {
   Unregister-ScheduledTask -TaskName $Tache -Confirm:$false -ErrorAction SilentlyContinue
-  foreach ($p in $Partages) { net use $p.Lettre /delete /y 2>$null | Out-Null }
+  foreach ($p in $Partages) { NetUse @($p.Lettre, '/delete', '/y') | Out-Null }
+  foreach ($s in $Serveurs) { cmdkey /delete:$s | Out-Null }
   Remove-Item -LiteralPath $Dossier -Recurse -Force -ErrorAction SilentlyContinue
-  Write-Host 'Partages Sillage retirés. Les identifiants restent dans le Gestionnaire d''identification Windows.'
+  Write-Host 'Partages Sillage retirés (lecteurs, tâche planifiée, identifiants enregistrés).'
+  Read-Host 'Appuyez sur Entrée pour fermer' | Out-Null
   exit 0
 }
 
-# Installation : identifiants demandés une fois par serveur, gardés par Windows (cmdkey).
-foreach ($serveur in ($Partages | ForEach-Object { $_.Serveur } | Select-Object -Unique)) {
-  $message = "Compte Samba pour $serveur"
-  $id = if ($Compte) { Get-Credential -UserName $Compte -Message $message } else { Get-Credential -Message $message }
-  if (-not $id) { Write-Host 'Installation annulée.'; exit 1 }
-  cmdkey /add:$serveur /user:$($id.UserName) /pass:$($id.GetNetworkCredential().Password) | Out-Null
-}
+# ---------------------------------------------------------------- Installation
+Write-Host 'Sillage : installation des partages réseau' -ForegroundColor Cyan
 New-Item -ItemType Directory -Force -Path $Dossier | Out-Null
+foreach ($serveur in $Serveurs) {
+  if (-not (Test-Serveur $serveur)) {
+    Noter "$serveur ne répond pas sur le port 445. Branchez-vous au réseau local ou au VPN, puis relancez." 'Red'
+    Read-Host 'Appuyez sur Entrée pour fermer' | Out-Null; exit 1
+  }
+  Nettoyer $serveur
+  $premier = ($Partages | Where-Object { $_.Serveur -eq $serveur } | Select-Object -First 1)
+  $test = "\\\\$serveur\\$($premier.Partage)"
+  for ($essai = 1; $essai -le 3; $essai++) {
+    $message = "Compte SAMBA pour $serveur (essai $essai/3)"
+    $id = if ($Compte) { Get-Credential -UserName $Compte -Message $message } else { Get-Credential -Message $message }
+    if (-not $id) { Write-Host 'Installation annulée.'; Read-Host 'Appuyez sur Entrée pour fermer' | Out-Null; exit 1 }
+    $u = $id.UserName -replace '^\\\\', ''
+    $mdp = $id.GetNetworkCredential().Password
+    # Vérification du compte avant de l'enregistrer
+    $r = NetUse @($test, $mdp, "/user:$u", '/persistent:no')
+    NetUse @($test, '/delete', '/y') | Out-Null
+    if ($r.Code -eq 0) {
+      cmdkey /delete:$serveur | Out-Null
+      cmdkey /add:$serveur /user:$u /pass:$mdp | Out-Null
+      Noter "Compte $u accepté par $serveur et enregistré dans Windows." 'Green'
+      break
+    }
+    Noter "Connexion refusée par $serveur : $(Explication $r.Message)" 'Red'
+    if ($essai -eq 3) { Read-Host 'Appuyez sur Entrée pour fermer' | Out-Null; exit 1 }
+  }
+}
 Copy-Item -LiteralPath $PSCommandPath -Destination $Cible -Force
-# Anciens lecteurs persistants sur ces lettres : ce sont eux qui figent l'Explorateur hors réseau.
-foreach ($p in $Partages) { net use $p.Lettre /delete /y 2>$null | Out-Null }
 # Lanceur invisible (pas de fenêtre qui clignote toutes les 5 minutes)
 Set-Content -LiteralPath $Lanceur -Encoding Unicode -Value ('CreateObject("WScript.Shell").Run "powershell.exe -NoProfile -ExecutionPolicy Bypass -File """ & "' + $Cible + '" & """ -Monter", 0, False')
 $utilisateur = [Security.SecurityElement]::Escape([Security.Principal.WindowsIdentity]::GetCurrent().Name)
@@ -143,13 +205,20 @@ $xml = @"
   <Actions Context="Utilisateur"><Exec><Command>wscript.exe</Command><Arguments>$argument</Arguments></Exec></Actions>
 </Task>
 "@
-Register-ScheduledTask -TaskName $Tache -Xml $xml -Force | Out-Null
-Monter-Partages
-Write-Host 'Partages Sillage installés :'
-Get-SmbMapping | Where-Object { $Partages.Lettre -contains $_.LocalPath } | Format-Table LocalPath, RemotePath, Status -AutoSize
-Write-Host 'Hors réseau, les lecteurs sont retirés puis remontés automatiquement au retour.'
+try {
+  Register-ScheduledTask -TaskName $Tache -Xml $xml -Force -ErrorAction Stop | Out-Null
+  Noter 'Tâche planifiée installée (remontage automatique).' 'Green'
+} catch {
+  Noter "Tâche planifiée non installée : $($_.Exception.Message). Les lecteurs sont montés, mais pas remontés seuls." 'Yellow'
+}
+$n = Monter-Partages
+Write-Host ''
+Write-Host "$n lecteur(s) sur $($Partages.Count) montés." -ForegroundColor Cyan
+Get-SmbMapping -ErrorAction SilentlyContinue | Where-Object { $Partages.Lettre -contains $_.LocalPath } | Format-Table LocalPath, RemotePath, Status -AutoSize
+Write-Host "Journal : $Journal"
+Read-Host 'Appuyez sur Entrée pour fermer' | Out-Null
 `
-  // PowerShell 5.1 lit les .ps1 sans BOM comme ANSI : on garde des fins de ligne Windows, le BOM est ajouté au téléchargement.
+  // PowerShell 5.1 lit les .ps1 sans BOM comme ANSI : fins de ligne Windows ici, BOM ajouté au téléchargement.
   return body.replaceAll("\n", "\r\n")
 }
 
