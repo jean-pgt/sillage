@@ -29,7 +29,7 @@ It is built for homelabs and small teams who want a clean, safe alternative to e
 - **Mount scripts for Windows, macOS and Linux** — tick the shares you want, pick drive letters, download one script:
   - no password inside the script: it is asked once and stored by the OS (Windows Credential Manager, macOS Keychain, a root-only file on Linux);
   - shares are only mounted when the server answers, so **File Explorer / Finder no longer freezes away from home**; they come back by themselves on the home network or VPN.
-- **Client address per server** — the IP or local DNS name your computers use, which can differ from the SSH address.
+- **Client address per server** — the IP or local DNS name your computers use (e.g. `nas.home.lan`), which can differ from the SSH address. Set it in *Réglages* or on each server card; Sillage checks that the name resolves.
 - **Single sign-on** with any OpenID Connect provider (Authentik, Keycloak, Authelia, Zitadel…): PKCE, state, nonce, mandatory group.
 - **Safe by design** — pinned SSH host keys, every Samba change is backed up, validated with `testparm` and rolled back automatically if Samba refuses it; full action history.
 - **Works on a phone** — dark glass interface, responsive down to 390 px.
@@ -98,7 +98,7 @@ Update: `git pull && bash install/lxc.sh` — data and settings are kept.
 1. Open Sillage and create the local account with the **setup code** (`BOOTSTRAP_TOKEN`).
 2. **Add a server** (*Serveurs → Ajouter un serveur*): run the displayed script with `sudo bash` on your Samba server, then paste the SSH fingerprint it prints.
 3. Click **Actualiser** (refresh): shares, accounts and storage appear.
-4. Optional: in *Serveurs*, set the **address for computers** (*Adresse pour les postes*), e.g. `nas.home.lan`.
+4. Optional: in *Réglages*, set the **address for computers** (*Adresse des partages pour les postes*), e.g. `nas.home.lan`, so scripts keep working if the server's IP changes.
 
 ## Single sign-on (recommended)
 

@@ -1,4 +1,6 @@
 import { readFileSync } from 'node:fs';
+import { lookup } from 'node:dns/promises';
+import { isIP } from 'node:net';
 import { z } from 'zod';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import * as oidc from 'openid-client';
@@ -185,7 +187,8 @@ export async function api(request, ip = 'local') {
       if (match[2] === 'client-host' && method === 'PUT') {
         const data = z.object({ clientHost: z.union([z.literal(''), z.string().trim().regex(/^[a-zA-Z0-9][a-zA-Z0-9.:-]{0,252}$/)]) }).parse(await body(request));
         db.prepare('UPDATE servers SET client_host=? WHERE id=?').run(data.clientHost || null, server.id);
-        audit(user.name, 'Adresse pour les postes', server.name + ' / ' + (data.clientHost || server.host)); return json({ ok: true });
+        audit(user.name, 'Adresse pour les postes', server.name + ' / ' + (data.clientHost || server.host));
+        return json({ ok: true, host: data.clientHost || server.host, resolved: await resolveHost(data.clientHost || server.host) });
       }
       if (!match[2] && method === 'DELETE') { db.prepare('DELETE FROM servers WHERE id=?').run(server.id); audit(user.name, 'Retrait du serveur', server.name); return json({ ok: true }); }
     }
@@ -194,4 +197,13 @@ export async function api(request, ip = 'local') {
     if (error instanceof z.ZodError) return json({ error: 'Champs invalides : vérifiez le nom, le chemin et les informations de connexion.' }, 400);
     return json({ error: error.status ? error.message : 'Opération impossible. Vérifiez la connexion et les permissions du compte dédié.' }, error.status || 502);
   }
+}
+
+// Vérifie qu'un nom DNS local se résout depuis Sillage (indication seulement : les postes peuvent avoir un autre DNS).
+async function resolveHost(host) {
+  if (isIP(host)) return [host];
+  try {
+    const found = await Promise.race([lookup(host, { all: true }), new Promise((_, reject) => setTimeout(() => reject(new Error('délai')), 3000))]);
+    return [...new Set(found.map(item => item.address))];
+  } catch { return []; }
 }

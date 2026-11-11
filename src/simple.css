@@ -164,3 +164,11 @@
 .mount-account input{width:100%;min-height:43px;border:1px solid var(--line);border-radius:999px;background:rgba(255,255,255,.04);padding:10px 16px;color:var(--text);font-weight:400}
 @media (max-width:520px){.client-host-row{flex-direction:column}.mount-target{display:none}}
 @media (max-width:620px){.page-heading .heading-actions{display:grid;grid-template-columns:1fr 1fr;width:100%;gap:8px}.page-heading .heading-actions .button{white-space:nowrap;width:100%}.page-heading .heading-actions .button.primary{grid-column:1/-1}.page-heading .heading-actions .button:only-child{grid-column:1/-1}}
+
+/* Réglages : adresse des partages pour les postes */
+.client-host-settings .settings-status p code { font-size: 12px; }
+.simple-settings + .simple-settings { margin-top: 16px; }
+.client-host-setting { display: grid; gap: 10px; padding-top: 16px; border-top: 1px solid var(--line, rgba(255,255,255,.12)); margin-top: 18px; }
+.client-host-setting > span { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.client-host-setting strong { font-weight: 600; }
+.client-host-setting small { color: rgba(255,255,255,.48); font-size: 12px; }
